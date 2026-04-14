@@ -51,13 +51,17 @@ export const jiraTools = {
         .describe("Pagination offset"),
     }),
     execute: async ({ cloudId, jql, fields, maxResults, startAt }) => {
-      const params = new URLSearchParams({ jql });
-      if (fields) params.set("fields", fields.join(","));
-      if (maxResults) params.set("maxResults", String(maxResults));
-      if (startAt) params.set("startAt", String(startAt));
+      const body: Record<string, unknown> = { jql };
+      if (fields) body.fields = fields;
+      if (maxResults) body.maxResults = maxResults;
+      if (startAt) body.startAt = startAt;
 
       return jiraFetch(
-        `/ex/jira/${cloudId}/rest/api/3/search?${params}`
+        `/ex/jira/${cloudId}/rest/api/3/search/jql`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
       );
     },
   }),

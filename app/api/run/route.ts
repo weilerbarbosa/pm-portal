@@ -1,4 +1,4 @@
-import { streamText, stepCountIs } from "ai";
+import { streamText, stepCountIs, convertToModelMessages } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { buildSystemPrompt } from "@/lib/skills/loader";
 import { getToolsForSkill } from "@/lib/tools";
@@ -17,10 +17,13 @@ export async function POST(req: Request) {
   const systemPrompt = buildSystemPrompt(skillId);
   const tools = getToolsForSkill(skillId);
 
+  // Convert UIMessages (with parts) to ModelMessages (with content)
+  const modelMessages = await convertToModelMessages(messages);
+
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
     system: systemPrompt,
-    messages,
+    messages: modelMessages,
     tools,
     stopWhen: stepCountIs(50),
   });
