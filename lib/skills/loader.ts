@@ -59,6 +59,11 @@ export function buildSystemPrompt(
     prompt += refs;
   }
 
+  // Inject current date so the model can calculate relative dates like "last week"
+  const today = new Date().toISOString().split("T")[0];
+  const dayName = new Date().toLocaleDateString("en-US", { weekday: "long" });
+  prompt = `**Today's date: ${today} (${dayName})**\n\n${prompt}`;
+
   // Config injection — replace hardcoded values with user's config
   // (For MVP, these match the defaults, but this enables per-user config later)
   prompt = prompt
