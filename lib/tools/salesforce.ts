@@ -1,44 +1,87 @@
 import { tool } from "ai";
 import { z } from "zod/v4";
 
+let cachedToken: { accessToken: string; instanceUrl: string; expiresAt: number } | null = null;
+
 async function getSfAccessToken(): Promise<{
   accessToken: string;
   instanceUrl: string;
 }> {
-  const clientId = process.env.SF_CLIENT_ID;
-  const clientSecret = process.env.SF_CLIENT_SECRET;
-  const refreshToken = process.env.SF_REFRESH_TOKEN;
+  // Return cached token if still valid (cache for 1 hour)
+  if (cachedToken && Date.now() < cachedToken.expiresAt) {
+    return cachedToken;
+  }
 
-  if (!clientId || !clientSecret || !refreshToken) {
+  const username = process.env.SALESFORCE_USERNAME;
+  const password = process.env.SALESFORCE_PASSWORD;
+  const instanceUrl = process.env.SALESFORCE_INSTANCE_URL;
+
+  if (!username || !password || !instanceUrl) {
     throw new Error(
-      "SF_CLIENT_ID, SF_CLIENT_SECRET, and SF_REFRESH_TOKEN env vars are required"
+      "SALESFORCE_USERNAME, SALESFORCE_PASSWORD, and SALESFORCE_INSTANCE_URL env vars are required"
     );
   }
 
+  // Use SOAP login to get session ID
+  const soapBody = `<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+  xmlns:urn="urn:partner.soap.sforce.com">
+  <soapenv:Body>
+    <urn:login>
+      <urn:username>${escapeXml(username)}</urn:username>
+      <urn:password>${escapeXml(password)}</urn:password>
+    </urn:login>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
   const res = await fetch(
-    "https://login.salesforce.com/services/oauth2/token",
+    `${instanceUrl}/services/Soap/u/59.0`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        grant_type: "refresh_token",
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: refreshToken,
-      }),
+      headers: {
+        "Content-Type": "text/xml",
+        SOAPAction: "login",
+      },
+      body: soapBody,
     }
   );
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Salesforce auth failed ${res.status}: ${body}`);
+    throw new Error(`Salesforce SOAP login failed ${res.status}: ${body}`);
   }
 
-  const data = await res.json();
-  return {
-    accessToken: data.access_token,
-    instanceUrl: data.instance_url,
+  const xml = await res.text();
+
+  const sessionIdMatch = xml.match(/<sessionId>([^<]+)<\/sessionId>/);
+  const serverUrlMatch = xml.match(/<serverUrl>([^<]+)<\/serverUrl>/);
+
+  if (!sessionIdMatch) {
+    throw new Error(`Salesforce login failed: no sessionId in response. Body: ${xml.slice(0, 500)}`);
+  }
+
+  const accessToken = sessionIdMatch[1];
+  // Extract instance URL from server URL or use configured one
+  const resolvedInstanceUrl = serverUrlMatch
+    ? new URL(serverUrlMatch[1]).origin
+    : instanceUrl;
+
+  cachedToken = {
+    accessToken,
+    instanceUrl: resolvedInstanceUrl,
+    expiresAt: Date.now() + 60 * 60 * 1000, // 1 hour
   };
+
+  return cachedToken;
+}
+
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 async function sfFetch(
