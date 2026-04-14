@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.69",
+    "@ai-sdk/react": "^3.0.162",
     "@base-ui/react": "^1.4.0",
     "@vercel/blob": "^2.3.3",
     "@vercel/postgres": "^0.10.0",
